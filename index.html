@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Combinaisons 3/4 animées</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+html,body{margin:0}
+/* Layout : tableau noir d'entraîneur — onglets des combinaisons, terrain à gauche, déroulé à droite */
+:root{
+  --bg:#f3f5f8; --panel:#ffffff; --fg:#14213a; --muted:#5b6880; --line:#d5dbe6;
+  --accent:#1f4fa3; --accent-fg:#ffffff; --active:#e6edf9;
+  --turf:#2f8a3c; --turf2:#297a35; --chalk:#f4fff4; --back:#1f4fa3; --fwd:#5d6f8f; --ball:#ffd81f; --run:#ffffff;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif; --body:"Barlow",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1624; --panel:#182235; --fg:#e8edf6; --muted:#9aa7bd; --line:#2b3850;
+  --accent:#6f9bea; --accent-fg:#0f1624; --active:#22314c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1624; --panel:#182235; --fg:#e8edf6; --muted:#9aa7bd; --line:#2b3850;
+  --accent:#6f9bea; --accent-fg:#0f1624; --active:#22314c; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 32px;display:flex;flex-direction:column;gap:14px}
+h1{font-family:var(--display);font-size:30px;line-height:1;margin:0;letter-spacing:.01em;text-transform:uppercase}
+.tabs,.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button{font:600 14px var(--body);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;cursor:pointer}
+button:focus-visible,input:focus-visible,li:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.tabs button{font-family:var(--display);font-size:18px;text-transform:uppercase;letter-spacing:.03em;padding:6px 14px}
+.main{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:820px){.main{grid-template-columns:minmax(0,1fr)}}
+.board{display:flex;flex-direction:column;gap:10px;min-width:0}
+svg{display:block;width:100%;height:auto;border-radius:8px;background:var(--turf)}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ctrl input[type=range]{flex:1 1 160px;min-width:0;accent-color:var(--accent)}
+#play{min-width:104px;background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.side{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.side h2{font-family:var(--display);font-size:26px;line-height:1;margin:0;text-transform:uppercase}
+.lbl{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.ctx{margin:0;color:var(--muted)}
+ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+li{display:flex;gap:10px;padding:7px 9px;border-radius:6px;cursor:pointer;border-left:3px solid transparent}
+li .t{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;flex:none;padding-top:1px}
+li.on{background:var(--active);border-left-color:var(--accent);font-weight:500}
+.note{margin:0;font-size:13.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+.trig{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;background:var(--ball);color:#2a2300;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.legend{margin:0;font-size:13.5px;color:var(--muted)}
+.tok text{font:600 11px var(--body);fill:#fff;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <h1>Combinaisons 3/4</h1>
+  <div class="tabs" id="tabs"></div>
+  <div class="main">
+    <div class="board">
+      <svg id="pitch" viewBox="240 30 690 465" role="img" aria-label="Terrain et joueurs"></svg>
+      <div class="ctrl">
+        <button id="play">▶ Lecture</button>
+        <button id="reset">Début</button>
+        <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Position dans la combinaison">
+        <button id="slow" aria-pressed="true">Lent</button>
+        <button id="lines" aria-pressed="true">Courses</button>
+      </div>
+    </div>
+    <div class="side">
+      <h2 id="name"></h2>
+      <p class="ctx" id="ctx"></p>
+      <div class="row" id="opts"></div>
+      <div class="lbl">Déroulé</div>
+      <ol id="steps"></ol>
+      <p class="legend">Anneau jaune et « Top » : moment où un joueur déclenche ou change sa course. Aucun trois-quarts ne passe devant le ballon avant la passe ; un leurre joué dans son dos s'arrête.</p>
+      <p class="note" id="note"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+// Repère : attaque vers le haut. Mouvement = [joueur, t0, t1, x, y, viaX, viaY, 'A' si appui]. Passe = [t0, t1, de, vers]. Étape = [t, texte, 1 si déclencheur].
+const N=null;
+const PLAYS=[
+{name:"Écosse",ctx:"Sur mêlée, maul ou touche direct.",holder:9,
+ pl:[[1,394,77],[2,354,77],[3,308,77],[4,372,101],[5,331,101],[6,287,101],[7,414,101],[8,349,127],[9,389,142],[10,467,200],[11,418,239],[12,541,180],[13,604,213],[15,761,267],[14,900,316]],
+ mv:[[12,.3,1.6,545,150],[10,0,1.9,612,205,530,250,'A'],[13,.5,1.7,612,160,N,N,'A'],[11,.2,2,560,290,470,295],[11,2,3,590,250]],
+ ps:[[0,.7,9,12]],
+ st:[[0,"Le 9 donne au 12. Au même moment, le 10 part redoubler dans le dos du 13.",1],[.5,"Le 13 vient couper sur le 12.",1],[2,"Le 11 reste à l'intérieur du 10."]],
+ opts:[{mv:[[10,1.9,2.6,668,190,N,N,'A'],[15,1.6,3.1,775,225],[15,3.1,3.7,790,208],[14,2.6,4.2,895,235],[14,4.2,5,895,150]],ps:[[1.3,1.9,12,10],[2.5,3.1,10,15],[3.6,4.2,15,14]],
+        st:[[1.3,"Le 12 donne au 10, qui prend le ballon derrière le 13."],[1.9,"Le 10 ressort à l'extérieur du 13."],[2.5,"Le 10 donne au large au 15."],[3.6,"Le 15 donne au 14 : le ballon va jusqu'à l'ailier."]]},
+       {mv:[[13,1.7,2.7,590,85]],ps:[[1.4,1.7,12,13]],st:[[1.4,"Le 12 donne au 13 lancé dans l'intervalle."]]}],
+ note:"Sur mêlée, si le 9 annonce « Brive », c'est le 8 qui lui lève le ballon (non animé). Schéma d'origine tourné pour attaquer vers le haut."},
+{name:"Tonga",ctx:"Sur mêlée, maul ou 2ᵉ temps de jeu. Le centre qui coupe fixe la défense, on joue dans son dos.",holder:9,
+ pl:[[1,312,116],[6,341,116],[7,368,103],[3,396,135],[4,329,151],[5,364,148],[2,350,178],[8,383,172],[9,377,203],[10,473,241],[12,541,267],[13,638,307],[15,711,313],[14,822,338],[11,485,352]],
+ mv:[],ps:[],st:[],
+ opts:[{
+   mv:[[10,.7,1.9,490,212],[12,.7,1.9,548,224,N,N,'A'],[11,0,.7,490,335],[11,.7,2.1,548,270,N,N,'A'],[11,2.1,3.1,612,190,592,262,'A'],[13,.7,2.4,655,280],[13,2.4,3.1,665,215],[15,.7,3.1,722,245]],
+   ps:[[0,.7,9,10],[1.7,2.1,10,11]],
+   st:[[0,"Le 9 donne au 10. Le 11 se cache derrière le 10."],[.7,"Le 10 prend le ballon : le 12 vient couper et le 11 sort de sa cachette.",1],[1.7,"Le 12 a fixé la défense : le 10 donne au 11, juste derrière le 12."],[2.1,"Le 11 ressort à l'extérieur du 12."]]},
+  {
+   mv:[[10,.7,.9,478,234],[12,.5,1.5,548,255],[12,1.5,2.7,565,226],[13,.7,1.5,640,290],[13,1.5,2.7,625,240,N,N,'A'],[11,0,1.5,555,340],[11,1.5,2.9,625,286,N,N,'A'],[11,2.9,3.9,692,205,672,278,'A'],[15,2.5,3.9,755,240]],
+   ps:[[0,.7,9,10],[.9,1.5,10,12],[2.5,2.9,12,11]],
+   st:[[0,"Le 9 donne au 10, le 10 donne au 12. Le 11 se cache derrière le 12."],[1.5,"Le 12 prend le ballon : le 13 vient couper et le 11 sort de sa cachette.",1],[2.5,"Le 13 a fixé la défense : le 12 donne au 11, juste derrière le 13."],[2.9,"Le 11 ressort à l'extérieur du 13."]]}],
+ note:"Option 1 : jouée avec 10, 12 et 11. Option 2 : jouée avec 12, 13 et 11. Le PDF affiche deux joueurs « 5 » dans le paquet d'avants ; j'ai renommé celui du haut en 7, à confirmer."},
+{name:"Irlande",ctx:"Départ du 8. Le 12 puis le 13 coupent pour arrêter la défense.",holder:8,
+ pl:[[8,324,173],[9,392,207],[10,478,217],[12,558,236],[13,666,295],[11,562,353],[15,792,338],[14,858,345]],
+ mv:[[10,1.2,2.2,490,198],[12,1.2,2.2,550,205,N,N,'A'],[9,.9,2.5,550,250,440,275,'A'],[9,2.5,3.3,600,222,N,N,'A'],[13,1.2,2.5,672,270],[13,2.5,3.3,657,235,N,N,'A'],[11,1.2,2.5,610,345],[11,2.5,3.6,657,281,N,N,'A']],
+ ps:[[0,.6,8,9],[.7,1.2,9,10],[2.1,2.5,10,9]],
+ st:[[0,"Le 8 relève le ballon et donne au 9."],[.7,"Le 9 donne au 10 et part redoubler à l'extérieur.",1],[1.2,"Le 10 prend le ballon : le 12 coupe sur lui pour arrêter la défense.",1],[2.1,"Le 10 redonne au 9, qui prend le ballon derrière le 12."],[2.5,"Le 9 ressort à l'extérieur : le 13 vient couper et le 11 se place dans son dos.",1]],
+ opts:[{mv:[[13,3.3,4.2,640,160]],ps:[[3,3.3,9,13]],st:[[3,"Il y a un trou : le 9 donne au 13 à plat."]]},
+       {mv:[[11,3.6,4.2,715,255,N,N,'A'],[15,3,4.6,800,275],[15,4.6,5.1,808,255],[14,3.8,5.5,880,272],[14,5.5,6.3,885,190]],ps:[[3.2,3.6,9,11],[4.1,4.6,11,15],[5,5.5,15,14]],
+        st:[[3.2,"Pas de trou : le 9 donne au 11, juste derrière le 13."],[3.6,"Le 11 ressort à l'extérieur."],[4.1,"Le 11 joue avec le 15."],[5,"Le 15 donne à l'ailier, le 14."]]}],
+ note:""},
+{name:"1000 Zap",ctx:"",holder:9,
+ pl:[[8,314,147],[9,328,197],[10,442,240],[13,637,268],[12,534,307],[11,527,374],[15,764,312],[14,857,378]],
+ mv:[[12,1.1,2.9,708,300,625,345,'A'],[13,1.5,2.5,645,240],[15,1.5,2.5,708,250,N,N,'A'],[11,1.1,2.9,690,360,600,385]],
+ ps:[[0,.6,9,10],[.8,1.5,10,13]],
+ st:[[0,"Le 9 donne au 10."],[.8,"Le 10 saute vers le 13."],[1.1,"Le ballon passe devant le 12 : il part redoubler.",1],[1.5,"Le 13 prend le ballon : le 15 vient en cut.",1]],
+ opts:[{mv:[[15,2.5,3.4,690,175]],ps:[[2.2,2.5,13,15]],st:[[2.2,"Le 13 donne au 15 lancé, qui arrête la défense."]]},
+       {mv:[[12,2.9,3.6,755,270,N,N,'A'],[11,2.9,4,800,300,N,N,'A'],[11,4,4.8,815,225],[14,3,4.8,875,262]],ps:[[2.5,2.9,13,12],[3.6,4,12,11]],
+        st:[[2.5,"Le 13 donne au 12, qui prend le ballon derrière le 15."],[2.9,"Le 12 ressort à l'extérieur, le 11 le suit.",1],[3.6,"Le 12 joue proche, à son extérieur, avec le 11."]]},
+       {mv:[[12,2.9,3.6,755,270,N,N,'A'],[11,2.9,4,800,312,N,N,'A'],[14,2.4,4.2,880,298],[14,4.2,5,885,225]],ps:[[2.5,2.9,13,12],[3.6,4.2,12,14]],
+        st:[[2.5,"Le 13 donne au 12, qui prend le ballon derrière le 15."],[2.9,"Le 12 ressort à l'extérieur, le 11 le suit.",1],[3.6,"Le 12 saute le 11 et joue au loin avec le 14."]]}],
+ note:"Le PDF place le 11 à l'intérieur du 12. D'après ta correction, il vient ici à l'extérieur du 12 pour la passe proche : à confirmer."},
+{name:"Boule de feu",ctx:"",holder:9,
+ pl:[[8,328,195],[9,340,245],[10,452,262],[12,546,277],[13,597,344],[11,367,358],[14,835,368],[15,681,420]],
+ mv:[[10,.6,1.8,535,238,N,N,'A'],[10,1.8,2.6,545,225,N,N,'A'],[10,2.6,3.2,578,208],[12,.6,2.6,655,250,N,N,'A'],[13,.6,1.8,620,322,N,N,'A'],[13,1.8,2.6,553,270,N,N,'A'],[13,2.6,3.6,480,200],[11,.6,2.6,430,300],[11,2.6,3.6,438,228]],
+ ps:[[0,.6,9,10],[2.35,2.6,10,13]],
+ st:[[0,"Le 9 donne au 10."],[.6,"Le 10 prend le ballon : 10, 12 et 13 partent vers l'extérieur.",1],[1.8,"Appui extérieur du 10 : le 13 commence à croiser.",1],[2.35,"Le 10 donne au 13, qui passe juste derrière lui."],[2.6,"Le 11 arrive à l'inter au soutien."]],
+ note:""},
+{name:"Paris",ctx:"Ne fonctionne que si les courses sont dans les temps.",holder:9,
+ pl:[[8,325,173],[9,328,220],[10,443,265],[12,556,328],[13,683,313],[11,443,376],[15,780,360],[14,880,360]],
+ mv:[[10,.6,2,520,240,N,N,'A'],[13,.6,2,600,252,N,N,'A'],[12,.6,2.4,600,297,572,335,'A'],[11,.6,2.4,555,375,495,400]],
+ ps:[[0,.6,9,10]],
+ st:[[0,"Le 9 donne au 10."],[.6,"Le 10 prend le ballon et part vers l'extérieur : le 13 coupe, le 12 passe dans son dos.",1],[2.4,"Le 11 suit le ballon pour être au soutien."]],
+ opts:[{mv:[[13,2,3,580,175],[11,2.4,3.3,555,300]],ps:[[1.7,2,10,13]],st:[[1.7,"Le 10 donne au 13 lancé."]]},
+       {mv:[[12,2.4,3.3,692,225,655,292,'A'],[11,2.4,3.3,612,305],[15,2,3.3,790,258]],ps:[[2,2.4,10,12]],st:[[2,"Le 10 donne au 12, qui prend le ballon derrière le 13."],[2.4,"Le 12 ressort à l'extérieur du 13."]]}],
+ note:""}
+];
+PLAYS.forEach(p=>(p.opts||[]).forEach((o,i)=>o.label="Option "+(i+1)));
+const NS="http://www.w3.org/2000/svg",$=id=>document.getElementById(id);
+const el=(n,a,p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p&&p.appendChild(e);return e};
+const svg=$("pitch");let cur=0,opt=0,t=0,T=4,playing=false,last=0,P,tok={},ballEl,runG,marks=[];
+
+function drawPitch(){
+  svg.innerHTML="";
+  for(let i=0;i<8;i++)el("rect",{x:240,y:30+i*60,width:690,height:60,fill:i%2?"var(--turf2)":"var(--turf)"},svg);
+  const L=(x1,y1,x2,y2,d)=>el("line",{x1,y1,x2,y2,stroke:"var(--chalk)","stroke-width":d?1.5:2.5,"stroke-dasharray":d||"none",opacity:d?.7:.9},svg);
+  L(250,30,250,495);L(920,30,920,495);
+  [58,147,262,380,468].forEach(y=>L(250,y,920,y));
+  [220,303].forEach(y=>L(250,y,920,y,"10 8"));
+  [293,390,775,870].forEach(x=>L(x,58,x,468,"8 10"));
+  [58,468].forEach(y=>{const s=y<100?-1:1;el("path",{d:`M565 ${y+s*22}V${y}M605 ${y+s*22}V${y}M565 ${y+s*10}H605`,stroke:"var(--chalk)","stroke-width":4,fill:"none"},svg)});
+  runG=el("g",{},svg);
+}
+function build(){
+  const p=PLAYS[cur],o=p.opts?p.opts[opt]:{mv:[],ps:[],st:[]};
+  P={pl:p.pl,holder:p.holder,mv:p.mv.concat(o.mv).sort((a,b)=>a[1]-b[1]),ps:p.ps.concat(o.ps).sort((a,b)=>a[0]-b[0]),st:p.st.concat(o.st).sort((a,b)=>a[0]-b[0])};
+  T=Math.max(...P.mv.map(m=>m[2]),...P.ps.map(m=>m[1]))+.4;
+  drawPitch();tok={};
+  P.pl.forEach(([id,x,y])=>{ // tracés des courses
+    let d=`M${x} ${y}`,has=false;
+    P.mv.filter(m=>m[0]===id).forEach(m=>{has=true;d+=m[5]!=null?`Q${m[5]} ${m[6]} ${m[3]} ${m[4]}`:`L${m[3]} ${m[4]}`});
+    if(has)el("path",{d,fill:"none",stroke:"var(--run)","stroke-width":2,"stroke-dasharray":"5 5",opacity:.65},runG);
+  });
+  marks=P.mv.filter(m=>m[7]).map(m=>{const q=pos(m[0],m[1]);return {t:m[1],e:el("circle",{cx:q[0],cy:q[1],r:18,fill:"none",stroke:"var(--ball)"},svg)}});
+  P.pl.forEach(([id])=>{
+    const g=el("g",{class:"tok"},svg);
+    el("circle",{r:13,fill:id<=8?"var(--fwd)":"var(--back)",stroke:"#fff","stroke-width":1.5},g);
+    el("text",{},g).textContent=id;tok[id]=g;
+  });
+  ballEl=el("ellipse",{rx:8,ry:5.5,fill:"var(--ball)",stroke:"#3a3000","stroke-width":1},svg);
+  $("name").textContent=p.name;$("ctx").textContent=p.ctx;$("ctx").hidden=!p.ctx;$("note").textContent=p.note;$("note").hidden=!p.note;
+  $("opts").innerHTML="";
+  (p.opts||[]).forEach((op,i)=>{const b=document.createElement("button");b.textContent=op.label;b.setAttribute("aria-pressed",i===opt);b.onclick=()=>{opt=i;stop();t=0;build()};$("opts").appendChild(b)});
+  $("steps").innerHTML="";
+  P.st.forEach(([ts,txt,trig])=>{const li=document.createElement("li");li.tabIndex=0;li.innerHTML=`<span class="t">${ts.toFixed(1)} s</span><span></span>`;li.lastChild.textContent=txt;if(trig){const k=document.createElement("b");k.className="trig";k.textContent="Top";li.lastChild.prepend(k)}
+    const go=()=>{stop();t=ts+.001;draw()};li.onclick=go;li.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go()}};$("steps").appendChild(li)});
+  [...$("tabs").children].forEach((b,i)=>b.setAttribute("aria-pressed",i===cur));
+  runG.setAttribute("visibility",$("lines").getAttribute("aria-pressed")==="true"?"visible":"hidden");
+  draw();
+}
+function pos(id,tt){
+  const s=P.pl.find(q=>q[0]===id);let x=s[1],y=s[2];
+  for(const m of P.mv){ if(m[0]!==id)continue;
+    if(tt>=m[2]){x=m[3];y=m[4];continue}
+    if(tt>m[1]){const u=(tt-m[1])/(m[2]-m[1]),vx=m[5]!=null?m[5]:(x+m[3])/2,vy=m[5]!=null?m[6]:(y+m[4])/2,w=1-u;
+      return [w*w*x+2*w*u*vx+u*u*m[3],w*w*y+2*w*u*vy+u*u*m[4]]}
+    break}
+  return [x,y];
+}
+function ball(tt){
+  let h=P.holder;
+  for(const p of P.ps){
+    if(tt>=p[1]){h=p[3];continue}
+    if(tt>=p[0]){const a=pos(p[2],p[0]),b=pos(p[3],p[1]),u=(tt-p[0])/(p[1]-p[0]);return [a[0]+(b[0]-a[0])*u+11,a[1]+(b[1]-a[1])*u+4]}
+    break}
+  const q=pos(h,tt);return [q[0]+11,q[1]+4];
+}
+function draw(){
+  P.pl.forEach(([id])=>{const q=pos(id,t);tok[id].setAttribute("transform",`translate(${q[0].toFixed(1)} ${q[1].toFixed(1)})`)});
+  const b=ball(t);ballEl.setAttribute("cx",b[0].toFixed(1));ballEl.setAttribute("cy",b[1].toFixed(1));
+  marks.forEach(m=>{const on=t>=m.t-.05&&t<m.t+.5;m.e.setAttribute("stroke-width",on?5:2);m.e.setAttribute("opacity",on?1:.55)});
+  $("scrub").value=Math.round(t/T*1000);
+  let act=-1;P.st.forEach((s,i)=>{if(t>=s[0])act=i});
+  [...$("steps").children].forEach((li,i)=>li.classList.toggle("on",i===act&&t>0));
+}
+function stop(){playing=false;$("play").textContent="▶ Lecture"}
+function frame(now){
+  if(!playing)return;
+  const rate=$("slow").getAttribute("aria-pressed")==="true"?.45:1;
+  t+=(now-last)/1000*rate;last=now;
+  if(t>=T){t=T;stop()}
+  draw();if(playing)requestAnimationFrame(frame);
+}
+$("play").onclick=()=>{if(playing){stop();return}if(t>=T)t=0;playing=true;$("play").textContent="❚❚ Pause";last=performance.now();requestAnimationFrame(frame)};
+$("reset").onclick=()=>{stop();t=0;draw()};
+$("scrub").oninput=e=>{stop();t=e.target.value/1000*T;draw()};
+const tog=id=>{const b=$(id);b.setAttribute("aria-pressed",b.getAttribute("aria-pressed")!=="true")};
+$("slow").onclick=()=>tog("slow");
+$("lines").onclick=()=>{tog("lines");runG.setAttribute("visibility",$("lines").getAttribute("aria-pressed")==="true"?"visible":"hidden")};
+PLAYS.forEach((p,i)=>{const b=document.createElement("button");b.textContent=p.name;b.onclick=()=>{cur=i;opt=0;stop();t=0;build()};$("tabs").appendChild(b)});
+build();
+</script>
+
+</body>
+</html>
